@@ -1,0 +1,52 @@
+cloud-architecture-diagram
+
+// Group ; Rui Monteiro, Nuno Ribeiro, Romain Humbert-Droz
+// Title: CheckMK Architecture
+// Description: This scheme represents the CheckMK architecture on AWS.
+// Date: 14/05/2025
+// Version : 1.0
+
+// ---------------------------------------------------------- \\
+
+// Global Users
+Technicians [icon: users]
+Users [icon: users]
+
+
+// Global components
+AWS infrastructure [icon: aws-cloud] {
+  DMZ [icon: server, label: "DMZ (SSH)"]
+
+  Internal Network [icon: network] {
+    Main Server [icon: Server, label: "Ubuntu 22.04 (Checkmk Server)"]{
+      omd [icon: package, label: "Open Monitoring Distribution"] {
+        Apache [icon: apache]
+        Redis [icon: database]
+        Nagios [icon: package, label: "Nagios Core"]
+        mkevent [icon: package]
+        Agent receiver [icon: package]
+      }
+      Agent CheckMK [icon: package, label: "Checkmk Agent"]
+    }
+    // Monitored servers
+    Windows Server [icon: windows, label: "WServer22 (Checkmk Agent)"]
+    Debian Server [icon: debian, label: "Deb12 (Checkmk Agent)"]
+  }
+}
+
+// Connections to DMZ
+Technicians <> DMZ: "443 (HTTPS) & 80 (http) & 22 (SSH)"
+Users <> DMZ: "443 (HTTPS) & 80 (HTTP)"
+
+// Remote connections
+DMZ > Main Server: SSH
+DMZ > Debian Server: SSH
+DMZ > Windows Server : RDP
+
+// Agent reader connections
+Agent receiver --> Windows Server: Listening on port 6556 (TCP)
+Agent receiver --> Debian Server: Listening on port 6556 (TCP)
+Agent receiver --> Agent CheckMK: Listening on port 6556 (TCP)
+
+
+DMZ > Apache: "443 (HTTPS) & 80 (HTTP)"
