@@ -6,12 +6,11 @@ This document outlines the hardware and software requirements for our CheckMk mo
 
 ### Hardware Specifications
 
-| Component | Minimum Requirement | Recommended       | Our Setup       | Justification                                                                    |
-| --------- | ------------------- | ----------------- | --------------- | -------------------------------------------------------------------------------- |
-| CPU       | 2 cores, 2.0GHz     | 4+ cores, 2.4GHz+ | 4 cores, 2.4GHz | Official Checkmk docs recommend at least 2-4 cores for up to 100 hosts/services. |
-| RAM       | 4 GB                | 8+ GB             | 8 GB            | 8 GB is recommended for smooth operation and future scaling.                     |
-| Storage   | 20 GB               | 50+ GB SSD        | 50 GB SSD       | SSD recommended for performance; 50 GB allows for logs and growth.               |
-| Network   | 1 Gbps              | 1 Gbps            | 1 Gbps          | Standard networking for lab environment.                                         |
+| Component | Minimum Requirement (100 hosts) | Our Setup       | Justification                                                                  |
+| --------- | ------------------------------- | --------------- | ------------------------------------------------------------------------------ |
+| CPU       | 2 cores, 2.0GHz                 | 2 cores, 2.0GHz | Sufficient for monitoring only 2 hosts in our deployment.                      |
+| RAM       | 8 GB                            | 4 GB            | Minimum requirement is adequate for our small deployment with only 2 hosts.    |
+| Storage   | 120 GB SSD                      | 20 GB           | Minimum storage is sufficient for small deployment with limited logs and data. |
 
 [Recommended system resources](https://checkmk.com/product/checkmk-system-requirements)
 
