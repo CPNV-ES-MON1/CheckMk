@@ -1,6 +1,6 @@
 cloud-architecture-diagram
 
-// Group ; Rui Monteiro, Nuno Ribeiro, Romain Humbert-Droz
+// Group : Rui Monteiro, Nuno Ribeiro, Romain Humbert-Droz
 // Title: CheckMK Architecture
 // Description: This scheme represents the CheckMK architecture on AWS.
 // Date: 14/05/2025
@@ -9,18 +9,18 @@ cloud-architecture-diagram
 // ---------------------------------------------------------- \\
 
 // Global Users
-Technicians [icon: users]
-Users [icon: users]
+Technician [icon: user]
+ENDUSER [icon: user]
 
 
 // Global components
 AWS infrastructure [icon: aws-cloud] {
-  DMZ [icon: server, label: "DMZ (SSH)"]
+  DMZ [icon: server, label: "DMZ"]
 
-  Internal Network [icon: network] {
-    Main Server [icon: Server, label: "Ubuntu 22.04 (Checkmk Server)"]{
+  Private Network [icon: network] {
+    Main Server [icon: ubuntu, label: "Ubuntu 22.04 (Checkmk Server)"]{
       omd [icon: package, label: "Open Monitoring Distribution"] {
-        Apache [icon: apache]
+        Apache [icon: apache, label: "Apache (Web UI)"]
         Redis [icon: database]
         Nagios [icon: package, label: "Nagios Core"]
         mkevent [icon: package]
@@ -35,18 +35,22 @@ AWS infrastructure [icon: aws-cloud] {
 }
 
 // Connections to DMZ
-Technicians <> DMZ: "443 (HTTPS) & 80 (http) & 22 (SSH)"
-Users <> DMZ: "443 (HTTPS) & 80 (HTTP)"
+Technician <> DMZ: "443:HTTPS 22:SSH"
+ENDUSER <> DMZ: "443:HTTPS"
 
 // Remote connections
-DMZ > Main Server: SSH
-DMZ > Debian Server: SSH
-DMZ > Windows Server : RDP
+DMZ > Main Server: "22:SSH"
+DMZ > Debian Server: "22:SSH"
+DMZ > Windows Server : "3389:RDP"
 
 // Agent reader connections
-Agent receiver --> Windows Server: Listening on port 6556 (TCP)
-Agent receiver --> Debian Server: Listening on port 6556 (TCP)
-Agent receiver --> Agent CheckMK: Listening on port 6556 (TCP)
+Agent receiver -- Agent CheckMK : "Listening on port 6556:TCP"
+Agent receiver -- Debian Server : "Listening on port 6556:TCP"
+Agent receiver -- Windows Server : "Listening on port 6556:TCP"
 
 
-DMZ > Apache: "443 (HTTPS) & 80 (HTTP)"
+DMZ > Apache: "443:HTTPS 80:HTTP"
+
+//Internal services communications
+Apache <> Nagios : Config updates
+Agent receiver > Nagios : Registering datas
