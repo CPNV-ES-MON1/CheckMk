@@ -25,7 +25,7 @@ Detailed documentation is available in the [docs](./docs) directory:
 - [Configuration Guide](./docs/03_ConfigurationGuide.md) - CheckMk configuration steps
 - [Monitoring Debian](./docs/04_MonitoringDebian.md) - Setting up Debian 12 monitoring
 - [Monitoring Windows](./docs/05_MonitoringWindows.md) - Setting up Windows Server 2022 monitoring
-- [Performance Analysis](./docs/06_PerformanceAnalysis.md) - Performance comparison before and after installation
+- [Performance Analysis](./docs/06_LogManagement.md) - Performance comparison before and after installation
 - [Scripts Overview](./docs/07_ScriptsOverview.md) - Documentation for automation scripts
 
 ## Quick Start

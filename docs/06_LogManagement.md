@@ -1,19 +1,14 @@
-# Checkmk Performance Analysis & Log Management
+# Checkmk Log Management
 
 ## Log Locations & Their Purposes
 
 ### WATO (Web Administration Tool)
 *Records all configuration changes made via the Web UI.*
-
-```bash
-/opt/omd/sites/monitoring/var/check_mk/wato/log/wato_audit.log
-```
+> /opt/omd/sites/monitoring/var/check_mk/wato/log/wato_audit.log
 
 ### General Log Directory
 
-```bash
-/opt/omd/sites/<sitename>/var/log/
-```
+> /opt/omd/sites/<sitename>/var/log/
 
 | Log File | Purpose |
 |---|---|
@@ -33,7 +28,7 @@
 
 ### Review Logs
 
-Combine all log files into a single file for easier review:
+Combine all log files into a single file:
 
 ```bash
 # Merge all Checkmk logs into one file
@@ -62,6 +57,7 @@ sudo tcpdump -i any host 10.0.1.11
 ```bash
 sudo tcpdump -i any host 10.0.1.10 and port 6556 -nn -v
 ```
+
 ### Windows host sending data
 *From windows host*
 ```powershell
