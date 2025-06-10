@@ -1,6 +1,6 @@
 # CheckMk Configuration Guide
 
-This guide provides step-by-step instructions for configuring notifications like suggested in the User Storys
+This guide provides step-by-step instructions for configure notifications like suggested in the User Storys
 
 ## Activate state change on overload
 
