@@ -43,8 +43,7 @@ git clone https://github.com/CPNV-ES-MON1/CheckMk.git
 cd checkmk/scripts/installation/
 
 # Configure your server environment
-cp config.json config.local.json
-nano config.local.json  # Edit with your settings
+nano config.json
 
 # Install CheckMk server with host configuration
 sudo ./setup.sh --install --add-hosts
