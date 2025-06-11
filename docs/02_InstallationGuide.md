@@ -10,128 +10,130 @@ Before beginning the installation, ensure you have:
 - Root access or sudo privileges
 - Internet connectivity
 
-## Installation Methods
+## Automated Installation (Recommended)
 
-There are two ways to install CheckMk:
+We've created a script to automate the CheckMk installation process. This script is located in the `scripts/installation/` directory.
 
-1. Using our automated installation script
-2. Manual installation following step-by-step instructions
+### Prerequisites for Automated Installation
 
-## Method 1: Automated Installation
+Ensure you have:
 
-We've created a script to automate the CheckMk installation process.
+- Ubuntu Server 22.04 LTS installed
+- Root access or sudo privileges
+- Internet connectivity
+- Git installed to clone the repository
 
-> WIP
-
-```bash
-# Download the installation script
-wget https://raw.githubusercontent.com/your-repo/checkmk/main/Scripts/install-checkmk.sh
-
-# Make the script executable
-chmod +x install-checkmk.sh
-
-# Run the script with root privileges
-sudo ./install-checkmk.sh
-```
-
-The script will:
-
-- Collect system information for reference
-- Update the system
-- Download and verify the CheckMk package
-- Install CheckMk and its dependencies
-- Create and configure a monitoring site
-- Start the CheckMk services
-
-## Method 2: Manual Installation
-
-### Step 1: Collect System Information
+### Step 1: Download the Installation Scripts
 
 ```bash
-mkdir -p BaseInstallationData && cd BaseInstallationData
-
-# Collecting system information
-dpkg --get-selections > packages.txt
-sudo ss -tuln > ports.txt
-systemctl list-units --type=service --state=running > services.txt
-service --status-all > services-status.txt
-sudo lshw -short > hardware.txt
-sudo lsblk > disks.txt
-sudo cp /etc/apt/sources.list sources.list
+# Clone the repository
+git clone https://github.com/CPNV-ES-MON1/CheckMk.git
+cd checkmk/scripts/installation/
 ```
 
-### Step 2: Update System Packages
+### Step 2: Configure the Installation
 
 ```bash
-sudo apt update
-sudo apt upgrade -y
+# Edit the configuration file with your specific settings
+nano config.json
 ```
 
-### Step 3: Download CheckMk Package
+**Key configuration parameters to modify**:
+
+```json
+{
+  "site_name": "YOUR_CHECKMK_SERVER",
+  "checkmk_version": "2.4.0",
+  "expected_hash": "1cd25e1831c96871f67128cc87422d2a35521ce42409bad96ea1591acf3df1a4",
+  "api_settings": {
+    "host": "localhost",
+    "port": 80
+  },
+  "folders": [
+    {
+      "name": "linux_servers",
+      "title": "Linux Servers"
+    },
+    {
+      "name": "windows_servers",
+      "title": "Windows Servers"
+    }
+  ],
+  "hosts": [
+    {
+      "hostname": "debian-host",
+      "ipaddress": "192.168.1.100",
+      "folder": "linux_servers"
+    },
+    {
+      "hostname": "windows-server",
+      "ipaddress": "192.168.1.101",
+      "folder": "windows_servers"
+    }
+  ]
+}
+```
+
+### Step 3: Run the Installation
 
 ```bash
-wget https://download.checkmk.com/checkmk/2.4.0/check-mk-raw-2.4.0_0.jammy_amd64.deb
+# Full installation with host configuration
+sudo ./setup.sh --install --add-hosts
+
+# For debug output during installation
+sudo ./setup.sh --debug --install --add-hosts
 ```
 
-### Step 4: Verify Package Integrity
+### What the Script Does
 
-```bash
-# Verify SHA-256 checksum
-sha256sum check-mk-raw-2.4.0_0.jammy_amd64.deb
+The automated installation script will:
+
+1. **System Validation**:
+
+   - Verify root privileges and system requirements
+   - Install dependencies (jq, curl, wget, lshw)
+   - Collect pre-installation system information
+
+2. **Package Management**:
+
+   - Update system packages
+   - Download CheckMk package with integrity verification
+   - Install CheckMk and dependencies
+
+3. **Site Configuration**:
+
+   - Create monitoring site with secure password generation
+   - Start CheckMk services
+   - Wait for API readiness
+
+4. **Host Management** (if --add-hosts used):
+
+   - Create folder structure from configuration
+   - Add hosts to monitoring
+   - Activate configuration changes
+
+5. **Completion**:
+   - Display installation summary
+   - Provide web interface access information
+   - Save logs for troubleshooting
+
+### Installation Output
+
+Upon successful completion, you'll see:
+
 ```
+=== CheckMk Installation Summary ===
+✓ CheckMk 2.4.0 installed successfully
+✓ Site 'monitoring' created and started
+✓ Web interface available at: http://YOUR_SERVER_IP/monitoring/
+✓ Username: cmkadmin
+✓ Password: [generated password displayed]
+✓ 2 hosts added to monitoring
+✓ Configuration activated successfully
 
-Expected output:
-
+Installation completed in XX minutes.
+Logs saved to: scripts/installation/logs/installation_YYYYMMDD_HHMMSS.log
 ```
-1cd25e1831c96871f67128cc87422d2a35521ce42409bad96ea1591acf3df1a4  check-mk-raw-2.4.0_0.jammy_amd64.deb
-```
-
-### Step 5: Install CheckMk
-
-```bash
-sudo apt install ./check-mk-raw-2.4.0_0.jammy_amd64.deb -y
-```
-
-### Step 6: Verify Installation
-
-```bash
-omd version
-```
-
-Expected output:
-
-```
-OMD - Open Monitoring Distribution Version 2.4.0.cre
-```
-
-### Step 7: Create a Monitoring Site
-
-```bash
-sudo omd create monitoring
-```
-
-The system will generate a random password for the admin user. Make sure to save this password securely.
-
-### Step 8: Start the Monitoring Site
-
-```bash
-sudo omd start monitoring
-```
-
-### Step 9: Verify Site Status
-
-```bash
-sudo omd status monitoring
-```
-
-## Post-Installation
-
-After successful installation:
-
-1. Access the CheckMk web interface at: `http://SERVER_IP/monitoring/`
-2. Log in with:
-   - Username: `cmkadmin`
-   - Password: The password generated during site creation
 
 ## Next Steps
 

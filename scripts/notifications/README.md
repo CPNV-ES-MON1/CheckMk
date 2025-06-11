@@ -8,7 +8,8 @@ This folder contains scripts for integrating CheckMk with different notification
 
 ```
 /notifications/
-└──  discord.py           # Discord notification integration
+├── discord.py           # Discord notification integration
+└── glpi.py             # GLPI ticket management integration
 ```
 
 ## Available Scripts
@@ -35,13 +36,23 @@ The script includes predefined messages for different states (OK, WARNING, CRITI
 - **Footer**: Additional message for action or conclusion
 - **Colors**: Green for OK, Yellow for WARNING, Red for CRITICAL
 
-## Adding New Notification Scripts
+### GLPI (glpi.py)
 
-To add a new notification integration:
+Script for automatic ticket management in GLPI based on CheckMk alerts.
 
-1. Create a new script in this directory
-2. Follow the existing design pattern for consistency:
-   - Provide adjustable configurations
-   - Implement deduplication when appropriate
-   - Use robust error handling
-   - Document the message format and usage
+#### Configuration
+
+Edit the script to configure:
+
+- `GLPI_API_URL`: URL of your GLPI API endpoint
+- `APP_TOKEN`: GLPI application token
+- `USER_TOKEN`: GLPI user token
+- `STATE_FILE`: Location of the state file for ticket tracking
+
+#### Features
+
+- **Automatic Ticket Creation**: Creates tickets for CRITICAL alerts
+- **Ticket Management**: Updates existing tickets for WARNING states
+- **Ticket Closure**: Automatically closes tickets when issues are resolved (OK state)
+- **ITIL Integration**: Properly categorizes tickets with ITIL categories
+- **Deduplication**: Prevents duplicate tickets for the same issue

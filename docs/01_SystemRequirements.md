@@ -2,6 +2,19 @@
 
 This document outlines the hardware and software requirements for our CheckMk monitoring implementation, with justification for each choice based on official support and best practices.
 
+## Architecture Overview
+
+Our CheckMk monitoring solution is deployed on AWS infrastructure with the following architecture:
+
+![CheckMK Architecture](../.github/assets/CheckMK-Scheme.png)
+
+The architecture consists of:
+
+- **DMZ Server**: Entry point for external access (HTTPS/SSH)
+- **CheckMk Server**: Ubuntu 22.04 running CheckMk with integrated components
+- **Monitored Hosts**: Debian 12 and Windows Server 2022 with CheckMk agents
+- **Communication**: Secure connections via SSH, RDP, and CheckMk agent protocol (port 6556)
+
 ## CheckMk Server Requirements
 
 ### Hardware Specifications

@@ -4,15 +4,15 @@ This guide provides step-by-step instructions for configure notifications like s
 
 ## Activate state change on overload
 
-> Setup > Services monitoring rules > CPU utilization for simple devices : 
+> Setup > Services monitoring rules > CPU utilization for simple devices :
 
-**In a new rule set theses parameters :** 
+**In a new rule set theses parameters :**
 
-- **Description :** *CPUOver80*
-- **[x] Levels over an extended time period on total CPU utilization :** *80.0%*
-- **Warning after :** *30 secs (other values to 0)*
-- **Critical after :** *1 mins (other values to 0)*
-- **[x] Explicit Hosts  :** *<Windows_Workstation_Hostname>*
+- **Description :** _CPUOver80_
+- **[x] Levels over an extended time period on total CPU utilization :** _80.0%_
+- **Warning after :** _30 secs (other values to 0)_
+- **Critical after :** _1 mins (other values to 0)_
+- **[x] Explicit Hosts :** _<Windows_Workstation_Hostname>_
 
 ## Script for discord notification
 
@@ -22,62 +22,65 @@ This guide provides step-by-step instructions for configure notifications like s
 # Go to notifications plugins directory
 cd /opt/omd/sites/monitoring/local/share/check_mk/notifications/
 
-# Download the notifications scripts
-wget https://raw.githubusercontent.com/your-repo/checkmk/main/Scripts/notifications_discord.py
-wget https://raw.githubusercontent.com/your-repo/checkmk/main/Scripts/notifications_glpi.py
+# Download the notifications scripts from the repository
+# Copy from your local scripts directory:
+sudo cp /path/to/checkmk/scripts/notifications/discord.py ./
+sudo cp /path/to/checkmk/scripts/notifications/glpi.py ./
 
 # Make scripts executable
-chmod +x notifications_discord.py
-chmod +x notifications_glpi.py
+chmod +x discord.py
+chmod +x glpi.py
 ```
 
-> Those scripts are templates, you will still need to edit it and enter your discord webhook + your glpi API tokens
+> Those scripts are templates, you will still need to edit them and enter your Discord webhook URL and your GLPI API tokens
 
 Discord script will:
 
 - Receive state (Critical, OK, Warning)
 - Format a notification / message depending on the state
 - Use a WebHook URL to send the notification on discord
-- Note error messsage in the process in a state file mention as a variable
+- Note error messages in the process in a state file mentioned as a variable
 
 GLPI script will:
 
 - Receive state (Critical, OK, Warning)
 - Format a notification / message depending on the state
 - Use API tokens to open a session and manage a ticket depending on CPU status
-- Note error messsage in the process in a state file mention as a variable
+- Note error messages in the process in a state file mentioned as a variable
 
-## Discord -  Sending notifications on changing state
+## Discord - Sending notifications on changing state
 
-> Setup > Notifications > Add notification rule : 
+> Setup > Notifications > Add notification rule :
 
-**Rule for** ***OK -> WARN*** **state:** 
+**Rule for** **_OK -> WARN_** **state:**
 
-- **[x]Service events :** *State change -> From OK to WARN*
-- **[x]Hosts :** *<Windows_Workstation_Hostname>*
-- **[x]Services :** *^CPU\**
-- **Send notification :** *notifications_discord.py -> Select parameters (random parameters)*
-- **Select recipient :** *All users*
-- **Description :** *CPU - Warning - Windows - discord*
+- **[x]Service events :** _State change -> From OK to WARN_
+- **[x]Hosts :** _<Windows_Workstation_Hostname>_
+- **[x]Services :** \*^CPU\*\*
+- **Send notification :** _discord.py -> Select parameters (random parameters)_
+- **Select recipient :** _All users_
+- **Description :** _CPU - Warning - Windows - discord_
 
 > **!** You must setup the 3 rules needed to manage all different state changes:
+
 - OK -> WARN
 - WARN -> CRITICAL
 - Any -> OK
 
-## GLPI -  Sending notifications on changing state
+## GLPI - Sending notifications on changing state
 
-> Setup > Notifications > Add notification rule : 
+> Setup > Notifications > Add notification rule :
 
-**Rule for** ***OK -> CRIT*** **state:** 
+**Rule for** **_OK -> CRIT_** **state:**
 
-- **[x]Service events :** *State change -> From OK to CRIT*
-- **[x]Hosts :** *<Windows_Workstation_Hostname>*
-- **[x]Services :** *^CPU\**
-- **Send notification :** *notifications_glpi.py -> Select parameters (random parameters)*
-- **Select recipient :** *All users*
-- **Description :** *CPU - Warning - Windows - glpi*
+- **[x]Service events :** _State change -> From OK to CRIT_
+- **[x]Hosts :** _<Windows_Workstation_Hostname>_
+- **[x]Services :** \*^CPU\*\*
+- **Send notification :** _glpi.py -> Select parameters (random parameters)_
+- **Select recipient :** _All users_
+- **Description :** _CPU - Warning - Windows - glpi_
 
 > **!** You must setup the 3 rules needed to manage all different state changes:
-- OK -> CRITICAL 
+
+- OK -> CRITICAL
 - CRITICAL -> OK

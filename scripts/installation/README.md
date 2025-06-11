@@ -1,13 +1,15 @@
-# CheckMk Installation and Configuration Tool
+# CheckMk Server Installation and Configuration Tool
 
 ## Overview
 
-Automated solution to install and configure CheckMk monitoring systems on Ubuntu/Debian-based environments. It handles the complete process from downloading and verifying the CheckMk package to setting up monitoring sites, configuring folders, installing agents, and adding hosts to monitoring.
+Automated solution to install and configure CheckMk monitoring server on Ubuntu/Debian-based environments. It handles the complete process from downloading and verifying the CheckMk package to setting up monitoring sites, configuring folders, and adding hosts to monitoring.
+
+**Important**: This tool is designed for CheckMk **server** installation and configuration. For agent installation on monitored hosts, refer to the respective monitoring guides in the documentation.
 
 ### Key Features
 
-- **Complete Installation**: Automated server setup with site creation
-- **Agent Installation**: Automatic detection and configuration
+- **Complete Server Installation**: Automated CheckMk server setup with site creation
+- **Host Management**: Automatic host and folder configuration from JSON files
 - **Flexible Configuration**: Folders and hosts configured from JSON files
 - **Error Handling**: Robust diagnostic and handling system
 - **Detailed Logs**: Log rotation to prevent disk space issues
@@ -82,21 +84,25 @@ Options:
   --help                 Display help message and exit
   --debug                Enable debug output
   --install              Install CheckMk server and dashboard
-  --install-agent        Install CheckMk agent
   --add-hosts            Add hosts from configuration file
 ```
 
 ### Example Usage
 
 ```bash
-# Full installation with host configuration
+# Full server installation with host configuration
 sudo ./setup.sh --install --add-hosts
 
-# Install only the agent on a monitored machine
-sudo ./setup.sh --install-agent
+# Server installation only
+sudo ./setup.sh --install
 
 # Add hosts to an existing site
 sudo ./setup.sh --add-hosts
+
+# Enable debug output during installation
+sudo ./setup.sh --debug --install
+```
+
 ```
 
 ## Network Requirements
@@ -208,7 +214,7 @@ Manages log files:
 
 ## Workflow Details
 
-### Full Installation Workflow
+### Full Server Installation Workflow
 
 1. **Preparation**:
 
@@ -220,12 +226,12 @@ Manages log files:
 2. **Package Management**:
 
    - Update system packages
-   - Download CheckMk package
+   - Download CheckMk server package
    - Verify package integrity
 
 3. **Installation**:
 
-   - Install CheckMk package
+   - Install CheckMk server package
    - Collect post-installation system information
 
 4. **Site Configuration**:
@@ -239,32 +245,9 @@ Manages log files:
    - Add hosts from configuration
    - Activate changes
 
-6. **Agent Installation** (if requested):
-
-   - Download agent package from site
-   - Install agent package
-   - Configure agent service
-
-7. **Completion**:
+6. **Completion**:
    - Display installation summary
    - Provide access information
 
-### Agent Installation Workflow
-
-1. **Site Verification**:
-
-   - Check if site exists
-   - Start site if not running
-   - Get site credentials
-
-2. **Agent Installation**:
-
-   - Check if agent is already installed
-   - Download agent package from site
-   - Install agent package
-   - Enable and start agent service
-   - Verify agent is running
-
-3. **Completion**:
-   - Display agent summary
-   - Verify agent port (6556) is open
+**Note**: For agent installation on monitored hosts, refer to the specific monitoring guides for [Debian](../../docs/04_MonitoringDebian.md) and [Windows](../../docs/05_MonitoringWindows.md) hosts.
+```
