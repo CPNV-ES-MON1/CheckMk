@@ -9,21 +9,7 @@ This guide provides step-by-step instructions for setting up monitoring of a Win
 - Administrator access on the Windows host
 - Network connectivity on port 6556 (CheckMk agent port)
 
-## Installation Methods
-
-You can install the CheckMk agent on Windows using either:
-
-1. The automated installation (via CheckMk web interface)
-2. Manual MSI installation
-
-## Method 1: Automated Installation via Web Interface
-
-1. In CheckMk web interface, go to `Setup > Agents > Windows`
-2. Click "Deploy Agent"
-3. Enter Windows host credentials
-4. The agent will be automatically installed and configured
-
-## Method 2: Manual MSI Installation
+## MSI Installation
 
 ### Step 1: Download the Agent
 
@@ -103,19 +89,6 @@ cd /path/to/installation/scripts
 sudo ./setup.sh --add-hosts
 ```
 
-## Monitoring Services
-
-The CheckMk agent on Windows will automatically monitor:
-
-- **System**: CPU, Memory, Disk usage
-- **Network**: Interface statistics
-- **Services**: Windows services
-- **Processes**: Running processes
-- **Event Logs**: Windows Event Log entries
-- **Performance Counters**: Various Windows performance metrics
-- **IIS**: If Internet Information Services is installed
-- **SQL Server**: If SQL Server is installed
-
 ## Advanced Configuration
 
 ### Custom Performance Counters
@@ -127,14 +100,6 @@ C:\Program Files (x86)\checkmk\service\check_mk.ini
 ```
 
 Add custom sections for specific monitoring needs.
-
-### WMI Monitoring
-
-Enable WMI-based monitoring for additional Windows-specific metrics:
-
-1. In CheckMk web interface, go to host configuration
-2. Enable WMI datasource program
-3. Configure WMI credentials if needed
 
 ## CPU Monitoring Configuration
 
@@ -221,11 +186,3 @@ Configure notifications for CPU state changes (see [Configuration Guide](./03_Co
    ```
    C:\Program Files (x86)\checkmk\service\check_mk.log
    ```
-
-## Next Steps
-
-After successfully setting up Windows monitoring, you can:
-
-- Configure custom monitoring rules for Windows-specific services
-- Set up advanced notifications (Discord, GLPI) as described in [Configuration Guide](./03_ConfigurationGuide.md)
-- Analyze performance data (see [Log Management](./06_LogManagement.md))

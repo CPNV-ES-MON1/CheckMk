@@ -134,7 +134,3 @@ Upon successful completion, you'll see:
 Installation completed in XX minutes.
 Logs saved to: scripts/installation/logs/installation_YYYYMMDD_HHMMSS.log
 ```
-
-## Next Steps
-
-After installation, proceed to the [Configuration Guide](./03_ConfigurationGuide.md) to set up your monitoring environment.
