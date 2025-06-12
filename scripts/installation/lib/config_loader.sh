@@ -1,18 +1,10 @@
 #!/bin/bash
 
 # =============================================================================
-# Title:        CheckMk Configuration Loader Module
-# Description:  Functions for loading and validating configuration data
-#               from JSON configuration files
-# Author:       Rui Monteiro (rui.monteiro@eduvaud.ch)
-# Created:      2023-05-08
-# Last Update:  2023-05-28
-# Version:      1.0.0
-#
-# Usage:        Sourced by setup.sh
+# CheckMk Configuration Loader Module
+# Functions for loading and validating configuration from JSON files
 # =============================================================================
 
-# Check for configuration files
 check_config_files() {
   if [ ! -f "$CONFIG_FILE" ]; then
     log "Configuration file not found: $CONFIG_FILE" "error"
@@ -20,24 +12,22 @@ check_config_files() {
   fi
 }
 
-# Load configuration from JSON file
 load_config() {
   if [ -f "$CONFIG_FILE" ]; then
     log "Loading configuration from $CONFIG_FILE" "info"
     if command_exists jq; then
-      # Validate JSON format
       if ! jq empty "$CONFIG_FILE" 2>/dev/null; then
         log "Invalid JSON format in $CONFIG_FILE" "error"
         log "Please check the file format and ensure it starts with '{' and ends with '}'" "info"
         exit 1
       fi
 
-      # Extract all configuration
+      # Extract configuration parameters
       SITE_NAME=$(jq -r '.site_name' "$CONFIG_FILE")
       CHECKMK_VERSION=$(jq -r '.checkmk_version' "$CONFIG_FILE")
       EXPECTED_HASH=$(jq -r '.expected_hash' "$CONFIG_FILE")
 
-      # Extract API settings with defaults
+      # Get API settings with defaults
       API_HOST=$(jq -r '.api_settings.host // "localhost"' "$CONFIG_FILE")
       API_PORT=$(jq -r '.api_settings.port // 80' "$CONFIG_FILE")
 
@@ -49,7 +39,7 @@ load_config() {
 
       FOLDERS=()
 
-      # Build folder dictionary
+      # Create folder list with name/title pairs
       for i in "${!FOLDER_NAMES[@]}"; do
         FOLDERS+=("${FOLDER_NAMES[$i]}|${FOLDER_TITLES[$i]}")
         log "Added folder: ${FOLDER_NAMES[$i]} (${FOLDER_TITLES[$i]})" "debug"
@@ -92,11 +82,10 @@ load_config() {
     exit 1
   fi
 
-  # Set derived variables based on loaded configuration
+  # Set variables derived from configuration
   PACKAGE_FILE="check-mk-raw-${CHECKMK_VERSION}_0.jammy_amd64.deb"
   DOWNLOAD_URL="https://download.checkmk.com/checkmk/${CHECKMK_VERSION}/${PACKAGE_FILE}"
 
-  # Build base API URL
   API_BASE_URL="http://${API_HOST}:${API_PORT}"
   log "API base URL: $API_BASE_URL" "debug"
 }

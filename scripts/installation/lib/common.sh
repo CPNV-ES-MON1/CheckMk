@@ -1,73 +1,68 @@
 #!/bin/bash
 
 # =============================================================================
-# Title:        CheckMk Common Utilities Module
-# Description:  Common functions for logging, task execution, and utilities
-#               used across the CheckMk installation process
-# Author:       Rui Monteiro (rui.monteiro@eduvaud.ch)
-# Created:      2023-05-08
-# Last Update:  2023-05-28
-# Version:      1.0.1
-#
-# Usage:        Sourced by setup.sh
+# CheckMk Common Utilities Module
+# Functions for logging, task execution, and utility operations
 # =============================================================================
 
-# Log messages with status and proper formatting - Updated for better log format
 log() {
   local message=$1
-  local level=$2 # "success", "error", "warning", "info", "debug"
+  local level=$2
   local timestamp
   timestamp=$(date +"%Y-%m-%d %H:%M:%S")
 
-  # Skip debug messages unless debug mode is enabled
-  if [ "$level" = "debug" ] && [ "$DEBUG_MODE" = false ]; then
-    return
+  if [ "$level" != "debug" ] || [ "$DEBUG_MODE" = true ]; then
+    local level_text
+    case "$level" in
+    "success")
+      level_text="SUCCESS"
+      echo -e "[$timestamp] [\033[32m$level_text\033[0m] $message"
+      ;;
+    "error")
+      level_text="ERROR"
+      echo -e "[$timestamp] [\033[31m$level_text\033[0m] $message"
+      ;;
+    "warning")
+      level_text="WARNING"
+      echo -e "[$timestamp] [\033[33m$level_text\033[0m] $message"
+      ;;
+    "info")
+      level_text="INFO"
+      echo -e "[$timestamp] [\033[34m$level_text\033[0m] $message"
+      ;;
+    "debug")
+      level_text="DEBUG"
+      echo -e "[$timestamp] [\033[35m$level_text\033[0m] $message"
+      ;;
+    *)
+      level_text="MESSAGE"
+      echo -e "[$timestamp] [$level_text] $message"
+      ;;
+    esac
   fi
 
-  # Set level text with consistent uppercase format
-  local level_text
-  case "$level" in
-  "success")
-    level_text="SUCCESS"
-    echo -e "[$timestamp] [\033[32m$level_text\033[0m] $message"
-    ;;
-  "error")
-    level_text="ERROR"
-    echo -e "[$timestamp] [\033[31m$level_text\033[0m] $message"
-    ;;
-  "warning")
-    level_text="WARNING"
-    echo -e "[$timestamp] [\033[33m$level_text\033[0m] $message"
-    ;;
-  "info")
-    level_text="INFO"
-    echo -e "[$timestamp] [\033[34m$level_text\033[0m] $message"
-    ;;
-  "debug")
-    level_text="DEBUG"
-    echo -e "[$timestamp] [\033[35m$level_text\033[0m] $message"
-    ;;
-  *)
-    level_text="MESSAGE"
-    echo -e "[$timestamp] [$level_text] $message"
-    ;;
-  esac
-
-  # Log to file if log file is defined - ALWAYS APPEND, never overwrite
   if [ -n "$LOG_FILE" ]; then
-    # For log files, don't use colors and always append
+    local level_text
+    case "$level" in
+    "success") level_text="SUCCESS" ;;
+    "error") level_text="ERROR" ;;
+    "warning") level_text="WARNING" ;;
+    "info") level_text="INFO" ;;
+    "debug") level_text="DEBUG" ;;
+    *) level_text="MESSAGE" ;;
+    esac
+
     echo "[$timestamp] [$level_text] $message" >>"$LOG_FILE"
   fi
 }
 
-# Progress spinner for long-running operations
 show_spinner() {
   local pid=$1
   local delay=0.1
   local spinstr='|/-\'
   local temp_message=$2
 
-  tput civis # Hide cursor
+  tput civis
 
   while [ "$(ps a | awk '{print $1}' | grep $pid)" ]; do
     local temp=${spinstr#?}
@@ -78,10 +73,9 @@ show_spinner() {
   done
 
   printf "\r                                                    \r"
-  tput cnorm # Show cursor
+  tput cnorm
 }
 
-# Enhanced execute_task with progress indicator for long operations
 execute_task_with_spinner() {
   local message=$1
   local command=$2
@@ -94,14 +88,11 @@ execute_task_with_spinner() {
 
   log "$message..." "info"
 
-  # Run the command in background
   $command >"$temp_output" 2>&1 &
   local command_pid=$!
 
-  # Show spinner while command is running
   show_spinner $command_pid "$message"
 
-  # Wait for command to finish
   wait $command_pid
   local exit_code=$?
   local end_time=$(date +%s)
@@ -125,13 +116,11 @@ execute_task_with_spinner() {
     log "Command that failed: $command" "error"
     log "Error output:" "error"
 
-    # Always show error output regardless of debug mode
     cat "$temp_output" | while read -r line; do
       log "  $line" "error"
     done
 
     if [ "$DEBUG_MODE" = true ]; then
-      # Get stack trace
       local stack_size=${#FUNCNAME[@]}
       log "Stack trace:" "debug"
       for ((i = 1; i < $stack_size; i++)); do
@@ -141,7 +130,6 @@ execute_task_with_spinner() {
         log "  at $func() in $src:$line" "debug"
       done
 
-      # Add system state information
       log "System state at time of error:" "debug"
       log "  Disk space: $(df -h / | awk 'NR==2 {print $4}') available" "debug"
       log "  Memory: $(free -h | grep Mem | awk '{print $4}') free" "debug"
@@ -156,7 +144,6 @@ execute_task_with_spinner() {
   return 0
 }
 
-# Enhanced execute_task with more detailed logging
 execute_task() {
   local message=$1
   local command=$2
@@ -165,7 +152,6 @@ execute_task() {
   local start_time=$(date +%s)
 
   if [ "$DEBUG_MODE" = true ]; then
-    # Sanitize the command before logging it
     local sanitized_command=$(sanitize_for_log "$command")
     log "Executing command: $sanitized_command" "debug"
   fi
@@ -205,7 +191,6 @@ execute_task() {
     cat "$temp_output" >&2
 
     if [ "$DEBUG_MODE" = true ]; then
-      # Get stack trace
       local stack_size=${#FUNCNAME[@]}
       log "Stack trace:" "debug"
       for ((i = 1; i < $stack_size; i++)); do
@@ -222,26 +207,20 @@ execute_task() {
   rm -f "$temp_output"
 }
 
-# Execute with spinner for long running tasks - completely fixed version to eliminate all duplicate messages
 execute_with_spinner() {
   local message=$1
   local command=$2
-  local timeout=${3:-1800} # Default timeout of 30 minutes
+  local timeout=${3:-1800}
   local temp_output=$(mktemp)
   local start_time=$(date +%s)
-  local command_pid="" # Initialize command_pid variable
+  local command_pid=""
   local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
 
-  # Don't log the message initially - we'll show it with the spinner
-
-  # Run the command in background first, so command_pid is defined
   eval "$command" >"$temp_output" 2>&1 &
   command_pid=$!
 
-  # Now create the watchdog process with access to the correct command_pid
   (
     sleep $timeout
-    # Check if the process is still running after timeout
     if ps -p $command_pid >/dev/null 2>&1; then
       log "Command timed out after ${timeout}s: $command" "error"
       kill -9 $command_pid 2>/dev/null
@@ -249,30 +228,23 @@ execute_with_spinner() {
   ) &
   local watchdog_pid=$!
 
-  # Show spinner while command is running
   local sp='/-\|'
   local i=0
-
-  # To prevent duplicate output, we'll store the last elapsed time we reported
   local last_reported=0
 
   while ps -p $command_pid >/dev/null 2>&1; do
     local elapsed=$(($(date +%s) - start_time))
-    timestamp=$(date +"%Y-%m-%d %H:%M:%S") # Update timestamp for real-time display
+    timestamp=$(date +"%Y-%m-%d %H:%M:%S")
 
-    # Only update the spinner, never output new lines while the command is running
     printf "\r[$timestamp] [\033[34mINFO\033[0m] %s %c (%ds)" "$message" "${sp:i++%4:1}" "$elapsed"
     sleep 0.5
   done
 
-  # Kill the watchdog as it's no longer needed
-  kill $watchdog_pid 2>/dev/null || true # Ignore errors if watchdog already terminated
+  kill $watchdog_pid 2>/dev/null || true
 
-  # Clear the spinner line completely
   printf "\r                                                                              \r"
 
-  # Check command result
-  wait $command_pid || true # Don't exit on error from wait
+  wait $command_pid || true
   local exit_code=$?
   local end_time=$(date +%s)
   local duration=$((end_time - start_time))
@@ -302,7 +274,6 @@ execute_with_spinner() {
   return 0
 }
 
-# Enhanced command_exists with debug output
 command_exists() {
   local cmd=$1
   if command -v "$cmd" >/dev/null 2>&1; then
@@ -314,19 +285,18 @@ command_exists() {
   fi
 }
 
-# Enhanced display_summary with simplified output
 display_summary() {
   SERVER_IP=$(hostname -I | awk '{print $1}')
   local installation_end_time=$(date +"%Y-%m-%d %H:%M:%S")
 
-  log "═════════════════════════════════════════" "info"
-  log "         Installation Summary            " "info"
-  log "═════════════════════════════════════════" "info"
+  log "================================================================" "info"
+  log "                    Installation Summary                        " "info"
+  log "================================================================" "info"
 
   if [ "$DO_INSTALL" = true ]; then
     log "CheckMk $INSTALLED_VERSION has been successfully installed" "info"
     log "Access the web interface: http://$SERVER_IP/$SITE_NAME/" "info"
-    log "Credentials:" "info"
+    log "Credentials: (password shown only once, not saved anywhere)" "info"
     log "  • Username: cmkadmin" "info"
     log "  • Password: $SITE_PASSWORD" "info"
     log "For CLI administration: omd su $SITE_NAME" "info"
@@ -334,7 +304,23 @@ display_summary() {
 
   if [ "$DO_INSTALL_AGENT" = true ]; then
     log "CheckMk agent has been installed and configured" "info"
-    log "Agent status: $(systemctl is-active check_mk_agent.socket)" "info"
+
+    local agent_version=$(dpkg-query -W -f='${Version}' check-mk-agent 2>/dev/null || echo "unknown")
+    log "Agent version: $agent_version" "info"
+
+    local agent_status=$(get_agent_status)
+
+    if [ "$agent_status" = "operational" ]; then
+      log "Agent status: OPERATIONAL" "info"
+    elif [ "$agent_status" = "active" ]; then
+      log "Agent status: ACTIVE" "info"
+    elif [ "$agent_status" = "wsl-pending" ]; then
+      log "Agent status: INSTALLED (needs configuration in WSL)" "info"
+      log "Run: sudo cmk-agent-ctl enable" "info"
+    else
+      log "Agent status: $agent_status" "info"
+      log "Check detailed status with: sudo cmk-agent-ctl status" "info"
+    fi
   fi
 
   if [ "$DO_ADD_HOSTS" = true ]; then
@@ -345,24 +331,39 @@ display_summary() {
     fi
   fi
 
-  log "═════════════════════════════════════════" "info"
+  log "================================================================" "info"
 }
 
-# Display agent-specific summary
 display_agent_summary() {
-  log "═════════════════════════════════════════" "info"
-  log "         Agent Installation Summary      " "info"
-  log "═════════════════════════════════════════" "info"
+  log "================================================================" "info"
+  log "                Agent Installation Summary                     " "info"
+  log "================================================================" "info"
 
   log "CheckMk agent has been installed and configured" "info"
-  log "Agent status: $(systemctl is-active check_mk_agent.socket)" "info"
-  log "Agent version: $(dpkg-query -W -f='${Version}' check-mk-agent 2>/dev/null || echo "unknown")" "info"
+
+  local agent_version=$(dpkg-query -W -f='${Version}' check-mk-agent 2>/dev/null || echo "unknown")
+  log "Agent version: $agent_version" "info"
+
+  local agent_status=$(get_agent_status)
+
+  if [ "$agent_status" = "operational" ]; then
+    log "Agent status: OPERATIONAL" "info"
+  elif [ "$agent_status" = "active" ]; then
+    log "Agent status: ACTIVE" "info"
+  elif [ "$agent_status" = "wsl-pending" ]; then
+    log "Agent status: INSTALLED (needs configuration in WSL)" "info"
+    log "Run the following command to enable the agent:" "info"
+    log "  sudo cmk-agent-ctl enable" "info"
+  else
+    log "Agent status: $agent_status" "info"
+    log "For detailed status, run: sudo cmk-agent-ctl status" "info"
+  fi
+
   log "For site: $SITE_NAME" "info"
 
-  log "═════════════════════════════════════════" "info"
+  log "================================================================" "info"
 }
 
-# Progress bar function for use with wget/curl
 show_progress_bar() {
   local current=$1
   local total=$2
@@ -379,21 +380,29 @@ show_progress_bar() {
   fi
 }
 
-# Enhanced function to sanitize sensitive data for logs
+sanitize_password() {
+  local input=$1
+  local length=${#input}
+
+  if [ $length -eq 0 ]; then
+    echo ""
+    return
+  fi
+
+  local first_char="${input:0:1}"
+  local mask=$(printf '%*s' $((length - 1)) | tr ' ' '*')
+  echo "${first_char}${mask}"
+}
+
 sanitize_for_log() {
   local input=$1
-
-  # Replace passwords and tokens with masked versions
   local sanitized=$input
 
-  # Replace password in JSON
+  sanitized=$(echo "$sanitized" | sed -E 's/(password=")[^"]+(")/\1*****\2/g')
+  sanitized=$(echo "$sanitized" | sed -E 's/(password: ")[^"]+(")/\1*****\2/g')
   sanitized=$(echo "$sanitized" | sed -E 's/"password":"[^"]+"/\"password\":\"*****\"/g')
-
-  # Replace tokens and keys
   sanitized=$(echo "$sanitized" | sed -E 's/"token":"[^"]+"/\"token\":\"*****\"/g')
   sanitized=$(echo "$sanitized" | sed -E 's/"api_key":"[^"]+"/\"api_key\":\"*****\"/g')
-
-  # Replace Basic Auth headers
   sanitized=$(echo "$sanitized" | sed -E 's/(Authorization: Basic )[^ ]+/\1*****/g')
 
   echo "$sanitized"

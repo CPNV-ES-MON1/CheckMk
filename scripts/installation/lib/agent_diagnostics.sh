@@ -1,26 +1,16 @@
 #!/bin/bash
 
 # =============================================================================
-# Title:        CheckMk Agent Diagnostics Module
-# Description:  Functions for diagnosing and troubleshooting CheckMk agent
-#               installation and connection issues
-# Author:       Rui Monteiro (rui.monteiro@eduvaud.ch)
-# Created:      2023-06-10
-# Last Update:  2023-06-10
-# Version:      1.0.0
-#
-# Usage:        Sourced by setup.sh
+# CheckMk Agent Diagnostics Module
+# Functions for troubleshooting agent installation and connection issues
 # =============================================================================
 
-# Diagnose agent issues and provide solutions
 diagnose_agent() {
   local site_name=$1
 
   log "Running agent diagnostics for site: $site_name" "info"
   log "------------------------------------------------" "info"
 
-  # Check site status
-  log "Checking site status..." "info"
   local site_running=false
   if omd status "$site_name" | grep -q "Overall state:.*running"; then
     log "Site is running correctly" "success"
@@ -31,17 +21,15 @@ diagnose_agent() {
     return 1
   fi
 
-  # Check available agent packages
-  log "Checking available agent packages..." "info"
   local agent_found=false
   local agent_url=""
 
-  # Show spinner while checking
+  # Display spinner animation during search
   local sp='/-\|'
   local i=0
   printf "[$timestamp] [\033[34mINFO\033[0m] Searching for agent packages "
 
-  # Try different paths to find agent packages
+  # Search for packages in common CheckMk paths
   for path in "check_mk/agents/" "agents/" "check_mk/check_mk/agents/"; do
     curl -s "http://localhost/$site_name/$path" | grep -o 'href="[^"]*\.deb"' | sed 's/href="//g;s/"//g' | while read -r agent; do
       printf "\r[$timestamp] [\033[34mINFO\033[0m] Searching for agent packages %c" "${sp:i++%4:1}"
@@ -66,7 +54,6 @@ diagnose_agent() {
     log "Check the web interface for available packages" "info"
   fi
 
-  # Check agent socket status
   log "Checking agent socket status..." "info"
   if systemctl is-active check_mk_agent.socket &>/dev/null; then
     log "Agent socket is active" "success"
@@ -75,7 +62,6 @@ diagnose_agent() {
     log "Try starting it with: systemctl start check_mk_agent.socket" "info"
   fi
 
-  # Check agent TCP port
   log "Checking agent port (6556)..." "info"
   if ss -tuln | grep -q ":6556"; then
     log "Agent port 6556 is open" "success"
@@ -84,7 +70,6 @@ diagnose_agent() {
     log "Check if the agent is running" "info"
   fi
 
-  # Test agent connection
   log "Testing agent connection..." "info"
   if command_exists telnet; then
     if timeout 2 bash -c "echo '' > /dev/tcp/localhost/6556" 2>/dev/null; then
@@ -96,7 +81,6 @@ diagnose_agent() {
     log "Telnet not available for connection test" "warning"
   fi
 
-  # Check for installed agent package
   log "Checking for installed agent package..." "info"
   if dpkg -l | grep -q check-mk-agent; then
     local agent_version=$(dpkg -l | grep check-mk-agent | awk '{print $3}')
@@ -115,19 +99,16 @@ diagnose_agent() {
   log "------------------------------------------------" "info"
 }
 
-# Verify agent installation and connectivity
 verify_agent_installation() {
   local site_name=$1
 
   log "Verifying agent installation for site: $site_name" "info"
 
-  # Check if agent package is installed
   if ! dpkg -l | grep -q check-mk-agent; then
     log "Agent package is not installed" "error"
     return 1
   fi
 
-  # Check if agent service is running
   if ! systemctl is-active check_mk_agent.socket &>/dev/null; then
     log "Agent service is not running" "error"
     log "Attempting to start agent service..." "info"
@@ -140,7 +121,6 @@ verify_agent_installation() {
     fi
   fi
 
-  # Check if agent port is listening
   if ! ss -tuln | grep -q ":6556"; then
     log "Agent port is not open" "error"
     return 1
@@ -150,24 +130,20 @@ verify_agent_installation() {
   return 0
 }
 
-# Fix common agent issues
 fix_agent_issues() {
   local site_name=$1
 
   log "Attempting to fix agent issues..." "info"
 
-  # Restart agent service
   log "Restarting agent service..." "info"
   systemctl restart check_mk_agent.socket
 
-  # Check if this fixed the issue
   if systemctl is-active check_mk_agent.socket &>/dev/null; then
     log "Agent service is now running" "success"
   else
     log "Failed to restart agent service" "error"
     log "Trying to reinstall the agent..." "info"
 
-    # Try to find agent package
     local agent_url=""
     for path in "check_mk/agents/" "agents/" "check_mk/check_mk/agents/"; do
       curl -s "http://localhost/$site_name/$path" | grep -o 'href="[^"]*\.deb"' | sed 's/href="//g;s/"//g' | while read -r agent; do
@@ -205,6 +181,93 @@ fix_agent_issues() {
       return 1
     fi
   fi
+
+  return 0
+}
+
+diagnose_api_issues() {
+  local site_name=$1
+
+  log "Running API diagnostics for site: $site_name" "info"
+  log "------------------------------------------------" "info"
+
+  if ! omd status "$site_name" | grep -q "Overall state:.*running"; then
+    log "Site is not running properly - this will affect API operations" "error"
+    log "Try starting it with: omd start $site_name" "info"
+    return 1
+  fi
+
+  log "Checking Apache status..." "info"
+  if ! systemctl is-active apache2 &>/dev/null; then
+    log "Apache is not running - required for API access" "error"
+    log "Try starting it with: systemctl start apache2" "info"
+  else
+    log "Apache is running" "success"
+  fi
+
+  log "Checking API connectivity..." "info"
+  if [ -z "$SITE_PASSWORD" ]; then
+    log "Site password not available - cannot check API connectivity" "error"
+    return 1
+  fi
+
+  local status_code=$(curl --silent --output /dev/null \
+    --write-out "%{http_code}" \
+    --header "Authorization: Basic $(echo -n "${API_USERNAME}:${SITE_PASSWORD}" | base64)" \
+    --header "Accept: application/json" \
+    "${API_BASE_URL}/${site_name}/check_mk/api/1.0/version")
+
+  log "API status code: $status_code" "info"
+
+  case "$status_code" in
+  200 | 201 | 202)
+    log "API is reachable and returning success" "success"
+    ;;
+  401)
+    log "API authentication failed - check credentials" "error"
+    ;;
+  403)
+    log "API forbidden - user may not have correct permissions" "error"
+    ;;
+  404)
+    log "API endpoint not found - check URL and site name" "error"
+    ;;
+  0)
+    log "Could not connect to API - check network connectivity" "error"
+    ;;
+  *)
+    log "API returned unexpected status code: $status_code" "warning"
+    ;;
+  esac
+
+  log "Testing folder creation via API..." "info"
+  local test_folder_name="api_test_$(date +%s)"
+
+  local folder_response=$(curl --silent \
+    --request POST \
+    --header "Authorization: Basic $(echo -n "${API_USERNAME}:${SITE_PASSWORD}" | base64)" \
+    --header "Content-Type: application/json" \
+    --header "Accept: application/json" \
+    --data "{\"name\":\"$test_folder_name\",\"title\":\"API Test Folder\",\"parent\":\"/\"}" \
+    --write-out "\n%{http_code}" \
+    "${API_BASE_URL}/${site_name}/check_mk/api/1.0/domain-types/folder_config/collections/all")
+
+  local folder_status_code=$(echo "$folder_response" | tail -n1)
+
+  if [[ "$folder_status_code" -ge 200 && "$folder_status_code" -lt 300 ]]; then
+    log "API folder creation test succeeded" "success"
+  else
+    log "API folder creation test failed with status: $folder_status_code" "error"
+    log "This indicates problems with host creation may be related to API permissions" "info"
+  fi
+
+  log "------------------------------------------------" "info"
+  log "API Diagnostic Summary:" "info"
+  log "1. Ensure the site is running: omd status $site_name" "info"
+  log "2. Verify Apache is running: systemctl status apache2" "info"
+  log "3. Check API credentials are correct" "info"
+  log "4. Ensure the site user has proper permissions" "info"
+  log "------------------------------------------------" "info"
 
   return 0
 }

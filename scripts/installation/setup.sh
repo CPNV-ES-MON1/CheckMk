@@ -6,8 +6,8 @@
 #               Creates site, folders, and adds hosts from config.json
 # Author:       Rui Monteiro (rui.monteiro@eduvaud.ch)
 # Created:      2023-05-08
-# Last Update:  2025-06-10
-# Version:      2.0.0
+# Last Update:  2025-06-12
+# Version:      2.0.1
 #
 # Requirements:
 #   - Ubuntu/Debian-based system
@@ -30,48 +30,12 @@ LIB_DIR="${SCRIPT_DIR}/lib"
 CONFIG_FILE="${SCRIPT_DIR}/config.json"
 BASE_DIR=$(pwd)
 
-# Create logs directory if it doesn't exist
-LOG_DIR="/var/log/checkmk-setup"
-[ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR"
-
-# Use timestamp in log filename for better history
-LOG_TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_FILE="${LOG_DIR}/checkmk_setup_${LOG_TIMESTAMP}.log"
-
-# Create a symlink to the latest log for convenience
-LATEST_LOG_LINK="${LOG_DIR}/latest.log"
-ln -sf "$LOG_FILE" "$LATEST_LOG_LINK"
-
-# Define a minimal version of the log function for early logging
-# This will be replaced by the full version when common.sh is sourced
-log() {
-    local message=$1
-    local level=$2
-    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
-
-    # Print to console with color
-    case "$level" in
-    "success") echo -e "[$timestamp] [\033[32mSUCCESS\033[0m] $message" ;;
-    "error") echo -e "[$timestamp] [\033[31mERROR\033[0m] $message" ;;
-    "warning") echo -e "[$timestamp] [\033[33mWARNING\033[0m] $message" ;;
-    "info") echo -e "[$timestamp] [\033[34mINFO\033[0m] $message" ;;
-    "debug") echo -e "[$timestamp] [\033[35mDEBUG\033[0m] $message" ;;
-    *) echo -e "[$timestamp] [$level] $message" ;;
-    esac
-
-    # Log to file if it exists
-    if [ -n "$LOG_FILE" ]; then
-        echo "[$timestamp] [${level^^}] $message" >>"$LOG_FILE"
-    fi
-}
-
-log "Log file created at: $LOG_FILE" "info"
-
 # Operation flags
 DEBUG_MODE=false
 DO_INSTALL=false
 DO_INSTALL_AGENT=false
 DO_ADD_HOSTS=false
+SHOW_HELP_ONLY=false
 
 # Variables populated from config files
 SITE_NAME=""
@@ -81,46 +45,8 @@ FOLDERS=()
 PACKAGE_FILE=""
 DOWNLOAD_URL=""
 SITE_PASSWORD=""
+LOG_FILE=""
 
-# Load library modules
-source "${LIB_DIR}/config.sh"
-source "${LIB_DIR}/common.sh"
-source "${LIB_DIR}/system_checks.sh"
-source "${LIB_DIR}/config_loader.sh"
-source "${LIB_DIR}/system_info.sh"
-source "${LIB_DIR}/installation.sh"
-source "${LIB_DIR}/site_management.sh"
-source "${LIB_DIR}/api_operations.sh"
-source "${LIB_DIR}/entity_management.sh"
-
-# Load log_rotation.sh module if it exists
-if [ -f "${LIB_DIR}/log_rotation.sh" ]; then
-    source "${LIB_DIR}/log_rotation.sh"
-else
-    # Define minimal versions of the log rotation functions
-    setup_log_directory() { return 0; }
-    rotate_logs() { return 0; }
-    create_log_summary() { return 0; }
-    log "Warning: log_rotation.sh module not found, using defaults" "warning"
-fi
-
-# Display script banner with version information - Improved clean version
-show_banner() {
-    log "================================================================" "info"
-    log "                 CheckMk Installation Script                    " "info"
-    log "                       Version 1.3.0                            " "info"
-    log "================================================================" "info"
-    log "Started at: $(date +"%Y-%m-%d %H:%M:%S")" "info"
-    log "Log file: $LOG_FILE" "info"
-
-    if [ "$DEBUG_MODE" = true ]; then
-        log "Debug mode: ENABLED" "info"
-    fi
-
-    log "================================================================" "info"
-}
-
-# Display help message
 show_help() {
     echo "Usage: sudo setup.sh [OPTION]..."
     echo "Automated installation and configuration of CheckMk monitoring."
@@ -142,18 +68,22 @@ show_help() {
     echo "Note: Running without arguments will display this help message."
 }
 
-# Parse command line arguments
 parse_arguments() {
-    # No arguments case
+    # Show help when no arguments provided
     if [ $# -eq 0 ]; then
+        SHOW_HELP_ONLY=true
         show_help
         exit 0
     fi
 
-    # Process arguments
+    # Define valid options for typo detection
+    local valid_options=("--help" "--debug" "--install" "--install-agent" "--add-hosts")
+
     while [ $# -gt 0 ]; do
-        case "$1" in
+        local arg="$1"
+        case "$arg" in
         --help)
+            SHOW_HELP_ONLY=true
             show_help
             exit 0
             ;;
@@ -170,7 +100,30 @@ parse_arguments() {
             DO_ADD_HOSTS=true
             ;;
         *)
-            echo "Error: Unknown option: $1"
+            # Suggest corrections for possible typos
+            echo -e "\033[31mError: Unknown option: $arg\033[0m"
+
+            local closest_match=""
+            local closest_distance=100
+
+            for option in "${valid_options[@]}"; do
+                if [[ "$arg" == --* && ${#arg} -gt 3 ]]; then
+                    if [[ "${option:0:3}" == "${arg:0:3}" && ${#option} -gt 3 ]]; then
+                        local diff=$((${#option} - ${#arg}))
+                        diff=${diff#-}
+
+                        if [[ $diff -lt $closest_distance ]]; then
+                            closest_distance=$diff
+                            closest_match=$option
+                        fi
+                    fi
+                fi
+            done
+
+            if [[ -n "$closest_match" ]]; then
+                echo -e "Did you mean \033[32m$closest_match\033[0m?"
+            fi
+
             echo "Run 'sudo setup.sh --help' for usage information."
             exit 1
             ;;
@@ -178,83 +131,125 @@ parse_arguments() {
         shift
     done
 
-    # If no operations are specified but there are arguments, show help
+    # Show help if no operations specified
     if [ "$DO_INSTALL" = false ] && [ "$DO_INSTALL_AGENT" = false ] && [ "$DO_ADD_HOSTS" = false ] &&
         [ "$DEBUG_MODE" = false ]; then
+        SHOW_HELP_ONLY=true
         show_help
         exit 0
     fi
 }
 
-# Display summary with masked password - show password in summary and don't save to file
-display_summary() {
-    SERVER_IP=$(hostname -I | awk '{print $1}')
-    local installation_end_time=$(date +"%Y-%m-%d %H:%M:%S")
+# Minimal log function for early startup
+log() {
+    local message=$1
+    local level=$2
+    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
 
-    # Create a visual separator for better readability
-    log "================================================================" "info"
-    log "                  Installation Summary                          " "info"
-    log "================================================================" "info"
-
-    if [ "$DO_INSTALL" = true ]; then
-        log "CheckMk $INSTALLED_VERSION has been successfully installed" "info"
-        log "Access the web interface: ${API_BASE_URL}/${SITE_NAME}/" "info"
-        log "Credentials:" "info"
-        log "  • Username: cmkadmin" "info"
-
-        # Don't log the actual password, use a masked version for the logs
-        local masked_password="*********"
-        if [ ${#SITE_PASSWORD} -gt 3 ]; then
-            # Show first and last character only
-            masked_password="${SITE_PASSWORD:0:1}*******${SITE_PASSWORD: -1}"
-        fi
-
-        # Display password in the log with masking - don't save to file
-        log "  • Password: $masked_password" "info"
-        log "For CLI administration: omd su $SITE_NAME" "info"
+    # Console output (skip debug unless in debug mode)
+    if [ "$level" != "debug" ] || [ "$DEBUG_MODE" = true ]; then
+        case "$level" in
+        "success") echo -e "[$timestamp] [\033[32mSUCCESS\033[0m] $message" ;;
+        "error") echo -e "[$timestamp] [\033[31mERROR\033[0m] $message" ;;
+        "warning") echo -e "[$timestamp] [\033[33mWARNING\033[0m] $message" ;;
+        "info") echo -e "[$timestamp] [\033[34mINFO\033[0m] $message" ;;
+        "debug") echo -e "[$timestamp] [\033[35mDEBUG\033[0m] $message" ;;
+        *) echo -e "[$timestamp] [$level] $message" ;;
+        esac
     fi
 
-    if [ "$DO_INSTALL_AGENT" = true ]; then
-        log "CheckMk agent has been installed and configured" "info"
-        log "Agent status: $(systemctl is-active check_mk_agent.socket)" "info"
+    # Always log everything to file if available
+    if [ -n "$LOG_FILE" ]; then
+        echo "[$timestamp] [${level^^}] $message" >>"$LOG_FILE"
     fi
+}
 
-    if [ "$DO_ADD_HOSTS" = true ]; then
-        log "Hosts have been configured from config.json" "info"
-        if [ "$DEBUG_MODE" = true ]; then
-            local host_count=$(jq '.hosts | length' "$CONFIG_FILE" 2>/dev/null || echo "unknown")
-            log "Number of configured hosts: $host_count" "info"
-        fi
+setup_logging() {
+    LOG_DIR="/var/log/checkmk-setup"
+    [ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR"
+
+    LOG_TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    LOG_FILE="${LOG_DIR}/checkmk_setup_${LOG_TIMESTAMP}.log"
+
+    # Create symlink to latest log
+    LATEST_LOG_LINK="${LOG_DIR}/latest.log"
+    ln -sf "$LOG_FILE" "$LATEST_LOG_LINK"
+}
+
+load_libraries() {
+    source "${LIB_DIR}/config.sh"
+    source "${LIB_DIR}/common.sh"
+    source "${LIB_DIR}/system_checks.sh"
+    source "${LIB_DIR}/config_loader.sh"
+    source "${LIB_DIR}/system_info.sh"
+    source "${LIB_DIR}/installation.sh"
+    source "${LIB_DIR}/site_management.sh"
+    source "${LIB_DIR}/api_operations.sh"
+    source "${LIB_DIR}/entity_management.sh"
+
+    # Handle optional modules
+    if [ -f "${LIB_DIR}/log_rotation.sh" ]; then
+        source "${LIB_DIR}/log_rotation.sh"
+    else
+        # Define minimal fallback functions
+        setup_log_directory() { return 0; }
+        rotate_logs() { return 0; }
+        create_log_summary() { return 0; }
+        log "Warning: log_rotation.sh module not found, using defaults" "warning"
+    fi
+}
+
+show_banner() {
+    log "================================================================" "info"
+    log "                 CheckMk Installation Script                    " "info"
+    log "                       Version 2.0.1                            " "info"
+    log "================================================================" "info"
+
+    local os_info=$(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '"')
+    local kernel_info=$(uname -r)
+    local hostname_info=$(hostname)
+
+    log "System:  $os_info ($kernel_info)" "info"
+    log "Host:    $hostname_info" "info"
+    log "Started: $(date +"%Y-%m-%d %H:%M:%S")" "info"
+    log "Log:     $LOG_FILE" "info"
+
+    if [ "$DEBUG_MODE" = true ]; then
+        log "Debug:   ENABLED" "info"
     fi
 
     log "================================================================" "info"
 }
 
-# Cleanup function to run on exit - modified to not display duplicate information
-cleanup_on_exit() {
-    local exit_code=$?
-
-    # Remove temporary files quietly
-    rm -f /tmp/agent_*.log 2>/dev/null
-    rm -f /tmp/folder_cache_*.txt 2>/dev/null
-
-    # Remove empty logs to save space
-    if [ -f "$LOG_FILE" ] && [ ! -s "$LOG_FILE" ]; then
-        rm -f "$LOG_FILE"
-        return
-    fi
-
-    # Don't display anything else to avoid duplicate information
-    # Just log end time to the log file
-    echo "[$timestamp] [INFO] Script finished at: $(date +"%Y-%m-%d %H:%M:%S")" >>"$LOG_FILE"
-}
-
-# Main function - consolidate log creation at the end
 main() {
-    # Parse command line arguments first to set DEBUG_MODE
+    # Process arguments first
     parse_arguments "$@"
 
-    # Setup log directory - use fallback if needed
+    # Check for operations requiring existing CheckMk
+    if [ "$DO_INSTALL" = false ] && ([ "$DO_INSTALL_AGENT" = true ] || [ "$DO_ADD_HOSTS" = true ]); then
+        if ! command -v omd >/dev/null 2>&1; then
+            echo -e "\033[31mERROR: CheckMk is not installed on this system\033[0m"
+            echo
+            echo "Before you can add hosts or install agents, you must first install"
+            echo "the CheckMk server using the --install option."
+            echo
+            echo -e "\033[1mREQUIRED ACTION:\033[0m"
+            echo "  Run: sudo setup.sh --install"
+            echo
+            echo "For a complete setup including hosts:"
+            echo "  Run: sudo setup.sh --install --add-hosts"
+            echo
+            exit 1
+        fi
+    fi
+
+    # Setup logging
+    setup_logging
+
+    # Load libraries
+    load_libraries
+
+    # Configure log directory with fallback
     if ! setup_log_directory "$LOG_DIR"; then
         LOG_DIR="$SCRIPT_DIR/logs"
         mkdir -p "$LOG_DIR"
@@ -263,40 +258,29 @@ main() {
         ln -sf "$LOG_FILE" "$LATEST_LOG_LINK"
     fi
 
-    # Rotate old logs to prevent disk space issues
+    # Maintain log history
     rotate_logs "$LOG_DIR" 30
 
-    # Show banner with script information
     show_banner
 
-    # Add system info logging
-    log "System information:" "info"
-    log "  - OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '"')" "info"
-    log "  - Kernel: $(uname -r)" "info"
-    log "  - Hostname: $(hostname)" "info"
-    log "  - Working directory: $BASE_DIR" "info"
-
-    # Trap signals for clean exit
+    # Register cleanup handler
     trap cleanup_on_exit INT TERM EXIT
 
-    # Check if root
     log "Checking root privileges..." "info"
     check_root
 
-    # For other operations, continue with normal flow
     install_dependencies
     check_config_files
     load_config
 
-    # Handle operations without --install
+    # Handle operations with existing CheckMk installation
     if [ "$DO_INSTALL" = false ] && ([ "$DO_INSTALL_AGENT" = true ] || [ "$DO_ADD_HOSTS" = true ]); then
         log "Checking if site '$SITE_NAME' exists..." "info"
 
-        # First check if site exists - required for both agent and add-hosts
         if check_site_exists "$SITE_NAME"; then
             log "Site '$SITE_NAME' exists, proceeding with operations" "info"
 
-            # Check site status
+            # Ensure site is running
             local site_status=$(omd status "$SITE_NAME" 2>/dev/null)
             if echo "$site_status" | grep -q "Overall state:.*running"; then
                 log "Site is running" "info"
@@ -305,14 +289,20 @@ main() {
                 start_monitoring_site "$SITE_NAME"
             fi
 
-            # For agent installation
+            # Get password for API access if needed
+            if [ "$DO_ADD_HOSTS" = true ]; then
+                if ! get_site_password "$SITE_NAME"; then
+                    log "Cannot continue without valid site password" "error"
+                    exit 1
+                fi
+            fi
+
+            # Handle agent installation
             if [ "$DO_INSTALL_AGENT" = true ]; then
-                # First check if agent is already installed
                 if check_agent_installed; then
                     log "CheckMk agent is already installed on this system" "info"
                     log "Agent status: $(systemctl is-active check_mk_agent.socket)" "info"
 
-                    # Ask if user wants to reinstall
                     log "Do you want to reinstall the agent? (y/n)" "info"
                     read -n 1 -r response
                     echo ""
@@ -326,34 +316,46 @@ main() {
                         log "Skipping agent installation" "info"
                     fi
                 else
-                    # Agent not installed, proceed with installation
                     log "Starting CheckMk agent installation process..." "info"
                     install_checkmk_agent
                     display_agent_summary
                 fi
             fi
 
-            # For adding hosts
+            # Handle host configuration
             if [ "$DO_ADD_HOSTS" = true ]; then
-                # Wait for API to be ready if we're using API operations
-                wait_for_api "$SITE_NAME" || exit 1
+                if ! wait_for_api "$SITE_NAME"; then
+                    log "API not available - cannot continue" "error"
+                    exit 1
+                fi
 
-                # IMPORTANT: Create folders first before adding hosts
                 log "Creating folders from configuration..." "info"
                 create_folders_from_config
 
-                # Add hosts and activate changes - simplified flow with reduced retries
                 log "Starting host configuration process..." "info"
 
-                # Try once with a more robust function that handles internal retries
-                if add_hosts_from_config "$SITE_NAME"; then
-                    log "Host configuration completed successfully" "success"
-                else
-                    log "Warning: Some hosts may not have been added correctly" "warning"
-                    log "Check the web interface to verify the host status" "info"
+                local host_add_retries=3
+                local host_add_success=false
+
+                for ((i = 1; i <= $host_add_retries; i++)); do
+                    log "Host addition attempt $i/$host_add_retries" "info"
+
+                    if add_hosts_from_config "$SITE_NAME"; then
+                        host_add_success=true
+                        log "Successfully added hosts from configuration" "success"
+                        break
+                    else
+                        log "Host addition attempt $i failed, retrying..." "warning"
+                        sleep 3
+                    fi
+                done
+
+                if [ "$host_add_success" = false ]; then
+                    log "Failed to add hosts after $host_add_retries attempts" "error"
+                    log "Manual intervention may be required" "info"
                 fi
 
-                # Always run activation regardless of add_hosts_from_config result
+                # Apply changes to CheckMk
                 log "Activating changes in CheckMk..." "info"
                 if ! activate_changes "$SITE_NAME"; then
                     log "Warning: Standard activation failed, trying forced activation..." "warning"
@@ -366,19 +368,28 @@ main() {
                     log "Activation completed successfully" "success"
                 fi
 
-                # Verify hosts without excessive retries
+                # Verify host configuration
                 log "Verifying host configuration..." "info"
+                local verified_count=0
+                local failed_count=0
+                local total_count=0
+
                 jq -c '.hosts[]' "$CONFIG_FILE" 2>/dev/null | while read -r host; do
                     local hostname=$(echo "$host" | jq -r '.hostname')
+                    total_count=$((total_count + 1))
+
                     if host_exists "$hostname" "$SITE_NAME"; then
                         log "Host '$hostname' verified in CheckMk" "success"
+                        verified_count=$((verified_count + 1))
                     else
                         log "Warning: Host '$hostname' not found in CheckMk after configuration" "warning"
+                        failed_count=$((failed_count + 1))
                     fi
                 done
+
+                log "Host verification complete: $verified_count verified, $failed_count not found" "info"
             fi
 
-            # Display summary if any operations were performed
             display_summary
 
             log "Operations completed successfully" "success"
@@ -392,76 +403,90 @@ main() {
         fi
     fi
 
-    # Handle full installation (when --install is specified)
+    # Full installation process
     if [ "$DO_INSTALL" = true ]; then
         log "Starting CheckMk server installation process..." "info"
 
-        # Create system information directory
         collect_system_info "PreInstallationData"
 
-        # Update system packages with recovery
         if ! update_system_packages; then
             log "Warning: System package update had issues, but continuing with installation" "warning"
-            # Continue anyway since package updates failing shouldn't stop the entire installation
         fi
 
-        # Download and verify CheckMk package
         download_checkmk_package
 
-        # Install CheckMk
         install_checkmk
 
-        # Collect post-installation system information
         collect_system_info "PostInstallationData"
 
-        # Setup monitoring site
         setup_monitoring_site
 
-        # Wait for API to be ready
         wait_for_api "$SITE_NAME" || exit 1
 
-        # Create folders from configuration
         create_folders_from_config
 
-        log "CheckMk server installation complete" "success"
+        if [ "$DO_ADD_HOSTS" = true ]; then
+            log "Starting host configuration process..." "info"
 
-        # Install agent if requested
-        if [ "$DO_INSTALL_AGENT" = true ]; then
-            log "Starting CheckMk agent installation process..." "info"
-            install_checkmk_agent
+            local host_add_retries=3
+            local host_add_success=false
+
+            for ((i = 1; i <= $host_add_retries; i++)); do
+                log "Host addition attempt $i/$host_add_retries" "info"
+
+                if add_hosts_from_config "$SITE_NAME"; then
+                    host_add_success=true
+                    log "Successfully added hosts from configuration" "success"
+                    break
+                else
+                    log "Host addition attempt $i failed, retrying..." "warning"
+                    sleep 3
+                fi
+            done
+
+            if [ "$host_add_success" = false ]; then
+                log "Failed to add hosts after $host_add_retries attempts" "error"
+                log "Manual intervention may be required" "info"
+            fi
+
+            log "Activating changes in CheckMk..." "info"
+            if ! activate_changes "$SITE_NAME"; then
+                log "Standard activation failed, trying forced activation..." "warning"
+                force_activation "$SITE_NAME"
+            fi
         fi
+
+        log "CheckMk server installation complete" "success"
     fi
 
-    # Display summary if any operations were performed
+    # Show installation summary
     if [ "$DO_INSTALL" = true ] || [ "$DO_ADD_HOSTS" = true ] || [ "$DO_INSTALL_AGENT" = true ]; then
         display_summary
     fi
 
-    # At the end, create a log summary but don't print a message about it
+    # Create log summary silently
     if type create_log_summary &>/dev/null; then
         create_log_summary "$LOG_DIR" >/dev/null 2>&1
     fi
-
-    # Don't log anything here - we'll do all final output in cleanup_on_exit
 }
 
-# Cleanup function to run on exit - completely redesigned for a cleaner finish
 cleanup_on_exit() {
     local exit_code=$?
 
-    # Remove temporary files quietly
-    rm -f /tmp/agent_*.log 2>/dev/null
-    rm -f /tmp/folder_cache_*.txt 2>/dev/null
+    if [ -n "$LOG_FILE" ]; then
+        # Clean up temporary files
+        rm -f /tmp/agent_*.log 2>/dev/null
+        rm -f /tmp/folder_cache_*.txt 2>/dev/null
 
-    # Remove empty logs to save space
-    if [ -f "$LOG_FILE" ] && [ ! -s "$LOG_FILE" ]; then
-        rm -f "$LOG_FILE"
-        return
+        # Remove empty logs
+        if [ -f "$LOG_FILE" ] && [ ! -s "$LOG_FILE" ]; then
+            rm -f "$LOG_FILE"
+            return
+        fi
+
+        # Record script end time
+        echo "[$timestamp] [INFO] Script finished at: $(date +"%Y-%m-%d %H:%M:%S")" >>"$LOG_FILE"
     fi
-
-    # Don't display anything else to avoid duplicate information
-    # Just log end time to the log file
-    echo "[$timestamp] [INFO] Script finished at: $(date +"%Y-%m-%d %H:%M:%S")" >>"$LOG_FILE"
 }
 
 # Start the installation

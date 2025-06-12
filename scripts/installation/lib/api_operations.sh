@@ -1,18 +1,10 @@
 #!/bin/bash
 
 # =============================================================================
-# Title:        CheckMk API Operations Module
-# Description:  Functions for interacting with the CheckMk REST API
-#               Handles authentication, requests, and response processing
-# Author:       Rui Monteiro (rui.monteiro@eduvaud.ch)
-# Created:      2023-05-08
-# Last Update:  2023-05-28
-# Version:      1.0.1
-#
-# Usage:        Sourced by setup.sh
+# CheckMk API Operations Module
+# Functions for interacting with the CheckMk REST API and handling responses
 # =============================================================================
 
-# Make API request with enhanced logging
 make_api_request() {
   local method=$1
   local endpoint=$2
@@ -102,7 +94,6 @@ make_api_request() {
   return 0
 }
 
-# Wait for API readiness with enhanced progress reporting
 wait_for_api() {
   local site_name=$1
   local max_attempts=${API_MAX_ATTEMPTS}
@@ -116,8 +107,18 @@ wait_for_api() {
 
   if [ -z "$SITE_PASSWORD" ]; then
     log "Cannot check API: Site password not available" "error"
-    log "Site might not have been created correctly" "debug"
-    return 1
+
+    # For existing sites, try to get the password
+    if check_site_exists "$site_name"; then
+      log "Attempting to get password for existing site" "info"
+      if ! get_site_password "$site_name"; then
+        log "Failed to get site password" "error"
+        return 1
+      fi
+    else
+      log "Site might not have been created correctly" "debug"
+      return 1
+    fi
   fi
 
   local start_time=$(date +%s)
@@ -145,10 +146,24 @@ wait_for_api() {
       log "API is ready (attempt $attempt/$max_attempts, total wait time: ${total_time}s)" "success"
       return 0
     elif [[ "$status_code" -eq 401 ]]; then
-      log "API authentication failed - check credentials (attempt $attempt/$max_attempts)" "warning"
-      log "Username: $API_USERNAME, Password length: ${#SITE_PASSWORD}" "debug"
+      # Authentication failure handling
+      log "API authentication failed - incorrect password (attempt $attempt/$max_attempts)" "error"
+
+      if [ $attempt -eq 3 ]; then
+        log "Consistent authentication failures - password may be incorrect" "warning"
+        if type -t prompt_for_site_password &>/dev/null; then
+          log "Prompting for password again..." "info"
+          if prompt_for_site_password "$site_name"; then
+            log "New password provided, retrying API connection" "info"
+            continue
+          else
+            log "Failed to get valid password" "error"
+            return 1
+          fi
+        fi
+      fi
     elif [[ "$status_code" -eq 400 ]]; then
-      # Try alternative endpoint if first one gives 400 error
+      # Try alternative endpoint for older CheckMk versions
       log "Bad request (400) with version endpoint, trying domain-types endpoint" "debug"
 
       status_code=$(curl --silent --output /dev/null \
@@ -172,7 +187,7 @@ wait_for_api() {
   log "API did not become ready after $max_attempts attempts (${total_time}s)" "error"
   log "Check if the CheckMk site is running with 'omd status $site_name'" "info"
 
-  # Final attempt with fully explicit request to help diagnose the issue
+  # Final diagnostic request for troubleshooting
   log "Making final diagnostic request..." "info"
   log "Verbose curl output for troubleshooting:" "debug"
   curl --verbose \
@@ -186,14 +201,13 @@ wait_for_api() {
   return 1
 }
 
-# Activate changes with enhanced error handling
 activate_changes() {
   local site_name=$1
 
   log "Activating changes in CheckMk..." "info"
   log "This might take a moment depending on the number of changes" "info"
 
-  log "Retrieving ETag for activation..." "debug"
+  # Get ETag needed for activation request
   local etag_response=$(curl --silent \
     --request GET \
     --header "Authorization: Basic $(echo -n "${API_USERNAME}:${SITE_PASSWORD}" | base64)" \
@@ -210,7 +224,6 @@ activate_changes() {
     log "Found Etag: $etag" "debug"
   fi
 
-  log "Sending activation request..." "debug"
   local start_time=$(date +%s)
 
   local response=$(curl --silent \
@@ -243,10 +256,10 @@ activate_changes() {
     fi
   fi
 
-  # Special case for "no changes to activate" (422 error)
+  # 422 error indicates no pending changes to activate
   if [[ "$status_code" -eq 422 ]] && [[ "$response_body" == *"no changes to activate"* ]]; then
     log "No changes needed activation (hosts may already be configured)" "warning"
-    return 0 # This is not a fatal error, return success
+    return 0
   fi
 
   if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]]; then
@@ -263,7 +276,7 @@ activate_changes() {
       log "  - Check if the API user has permission to activate changes" "debug"
     fi
 
-    # For 422 errors, don't exit the script as they're often just warnings
+    # 422 errors are typically warnings, not critical failures
     if [[ "$status_code" -eq 422 ]]; then
       log "Non-critical error during activation, continuing..." "warning"
       return 0
@@ -273,41 +286,66 @@ activate_changes() {
   fi
 }
 
-# Force activation of changes in CheckMk
 force_activation() {
   local site_name=$1
   local output_level=${2:-normal} # Can be 'normal', 'quiet', or 'verbose'
+  local max_retries=5
+  local retry_count=1
+  local success=false
 
   if [ "$output_level" != "quiet" ]; then
     log "Forcing activation of changes in CheckMk..." "info"
   fi
 
-  # Use a simplified approach to reduce API calls
-  local response=$(curl --silent \
-    --request POST \
-    --header "Authorization: Basic $(echo -n "${API_USERNAME}:${SITE_PASSWORD}" | base64)" \
-    --header "Content-Type: application/json" \
-    --data "{\"force_foreign_changes\":true}" \
-    --write-out "\n%{http_code}" \
-    "${API_BASE_URL}/${site_name}/check_mk/api/1.0/domain-types/activation_run/actions/activate-changes/invoke")
+  while [ $retry_count -le $max_retries ] && [ "$success" = false ]; do
+    if [ "$output_level" != "quiet" ]; then
+      log "Activation attempt $retry_count/$max_retries" "debug"
+    fi
 
-  local status_code=$(echo "$response" | tail -n1)
+    local response=$(curl --silent \
+      --request POST \
+      --header "Authorization: Basic $(echo -n "${API_USERNAME}:${SITE_PASSWORD}" | base64)" \
+      --header "Content-Type: application/json" \
+      --data "{\"force_foreign_changes\":true}" \
+      --write-out "\n%{http_code}" \
+      "${API_BASE_URL}/${site_name}/check_mk/api/1.0/domain-types/activation_run/actions/activate-changes/invoke")
 
-  if [ "$status_code" = "200" ] || [ "$status_code" = "201" ] || [ "$status_code" = "202" ]; then
-    if [ "$output_level" != "quiet" ]; then
-      log "Successfully activated changes" "success"
+    local status_code=$(echo "$response" | tail -n1)
+    local response_body=$(echo "$response" | sed '$d')
+
+    if [ "$output_level" = "verbose" ]; then
+      log "API response code: $status_code" "debug"
+      log "API response body: $response_body" "debug"
     fi
-    return 0
-  elif [ "$status_code" = "422" ]; then
-    if [ "$output_level" != "quiet" ]; then
-      log "No changes to activate (all configurations already applied)" "warning"
+
+    if [ "$status_code" = "200" ] || [ "$status_code" = "201" ] || [ "$status_code" = "202" ]; then
+      if [ "$output_level" != "quiet" ]; then
+        log "Successfully activated changes" "success"
+      fi
+      success=true
+      return 0
+    elif [ "$status_code" = "422" ]; then
+      if [ "$output_level" != "quiet" ]; then
+        log "No changes to activate (all configurations already applied)" "warning"
+      fi
+      success=true
+      return 0
+    else
+      if [ "$output_level" != "quiet" ]; then
+        log "Activation warning (attempt $retry_count/$max_retries) - status code: $status_code" "warning"
+      fi
+
+      # Retry with delay
+      retry_count=$((retry_count + 1))
+      if [ $retry_count -le $max_retries ]; then
+        sleep 3
+      fi
     fi
-    return 0
-  else
-    if [ "$output_level" != "quiet" ]; then
-      log "Activation warning - status code: $status_code" "warning"
-    fi
-    # Still return success as this is often just a warning
-    return 0
+  done
+
+  if [ "$success" = false ] && [ "$output_level" != "quiet" ]; then
+    log "Activation had issues after $max_retries attempts" "warning"
   fi
+
+  return 0
 }

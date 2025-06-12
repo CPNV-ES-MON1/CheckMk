@@ -1,18 +1,10 @@
 #!/bin/bash
 
 # =============================================================================
-# Title:        CheckMk Site Management Module
-# Description:  Functions for creating and managing CheckMk monitoring sites
-#               Handles site creation, configuration, and status monitoring
-# Author:       Rui Monteiro (rui.monteiro@eduvaud.ch)
-# Created:      2023-05-08
-# Last Update:  2023-06-10
-# Version:      1.1.0
-#
-# Usage:        Sourced by setup.sh
+# CheckMk Site Management Module
+# Functions for creating and managing monitoring sites
 # =============================================================================
 
-# Check if a monitoring site already exists
 check_site_exists() {
   local site_name=$1
   if omd sites | grep -q "$site_name"; then
@@ -22,48 +14,36 @@ check_site_exists() {
   fi
 }
 
-# Create and configure monitoring site - updated for better password handling
 create_monitoring_site() {
   local site_name=$1
   execute_with_spinner "Creating monitoring site '$site_name'" "omd create $site_name > site_creation.tmp"
 
-  # Extract site password but handle it securely
+  # Extract password securely without saving to disk
   SITE_PASSWORD=$(grep -oP 'cmkadmin with password: \K[^ ]+' site_creation.tmp)
 
   if [ -n "$SITE_PASSWORD" ]; then
-    # Don't include the actual password in logs, just confirmation it was generated
     log "Site created with auto-generated password" "success"
-
-    # Save the password to a secure file in the user's home directory
-    local password_file="$HOME/.checkmk_site_${site_name}_password"
-    echo "$SITE_PASSWORD" >"$password_file"
-    chmod 600 "$password_file"
-    log "Password saved to secure file: $password_file" "info"
+    log "Password will be displayed only in the final summary" "info"
   else
     log "Could not extract site password - cannot continue" "error"
     exit 1
   fi
 
-  # Securely remove the temporary file with the password
+  # Remove the temporary file with the password
   shred -u site_creation.tmp 2>/dev/null || rm -f site_creation.tmp
 
-  # Start the monitoring site
   execute_with_spinner "Starting monitoring site" "omd start $site_name"
 }
 
-# Start an existing monitoring site
 start_monitoring_site() {
   local site_name=$1
   execute_with_spinner "Starting monitoring site" "omd start $site_name"
 }
 
-# Setup monitoring site (create new or use existing)
 setup_monitoring_site() {
-  # Check if site already exists
   if check_site_exists "$SITE_NAME"; then
     log "Site '$SITE_NAME' already exists" "warning"
 
-    # Check site status
     local site_status=$(omd status "$SITE_NAME" 2>/dev/null)
     if echo "$site_status" | grep -q "Overall state:.*running"; then
       log "Existing site is already running" "info"
@@ -72,8 +52,6 @@ setup_monitoring_site() {
       start_monitoring_site "$SITE_NAME"
     fi
 
-    # Get the site password by extracting it from the htpasswd file
-    # This is needed for API access to the existing site
     log "Extracting password for existing site..." "info"
     SITE_PASSWORD=$(omd config "$SITE_NAME" show AUTH_PASSWORD_STORE 2>/dev/null | grep -v "AUTH_PASSWORD_STORE:")
 
@@ -85,15 +63,12 @@ setup_monitoring_site() {
       log "Successfully obtained site credentials" "success"
     fi
   else
-    # Create and configure a new monitoring site
     create_monitoring_site "$SITE_NAME"
   fi
 
-  # Check final site status
   check_site_status "$SITE_NAME"
 }
 
-# Wait for API with improved error handling
 wait_for_api_with_spinner() {
   local site_name=$1
   local max_attempts=${API_MAX_ATTEMPTS}
@@ -115,7 +90,6 @@ wait_for_api_with_spinner() {
     attempt=$((attempt + 1))
     local elapsed=$(($(date +%s) - start_time))
 
-    # Use carriage return to overwrite the line instead of printing new lines
     printf "\r[$timestamp] [\033[34mINFO\033[0m] Checking API readiness (attempt $attempt/$max_attempts) %c (%ds)" "${sp:attempt%4:1}" "$elapsed"
 
     local status_code=$(curl --silent --output /dev/null \
@@ -132,7 +106,7 @@ wait_for_api_with_spinner() {
       printf "\r                                                                                  \r"
       log "API authentication failed - incorrect credentials (attempt $attempt/$max_attempts)" "warning"
     elif [[ "$status_code" -eq 400 ]]; then
-      # Try alternative endpoint if first one gives 400 error
+      # Try alternative endpoint for compatibility with older versions
       status_code=$(curl --silent --output /dev/null \
         --write-out "%{http_code}" \
         --header "Authorization: Basic $(echo -n "${API_USERNAME}:${SITE_PASSWORD}" | base64)" \
@@ -146,7 +120,7 @@ wait_for_api_with_spinner() {
       fi
     fi
 
-    # Additional troubleshooting for non-localhost setups
+    # Help diagnose remote connection issues
     if [ "$API_HOST" != "localhost" ] && [ $attempt -eq 2 ] && [ "$status_code" = "000" ]; then
       log "Connection failure detected. Since you're using a custom host ($API_HOST:$API_PORT), check:" "warning"
       log "1. Network connectivity to the specified host and port" "info"
@@ -160,5 +134,88 @@ wait_for_api_with_spinner() {
   printf "\r                                                                                  \r"
   log "API did not become ready after $max_attempts attempts (${total_time}s)" "error"
   log "Check if the CheckMk site is running with 'omd status $site_name'" "info"
+  return 1
+}
+
+prompt_for_site_password() {
+  local site_name=$1
+
+  log "Site password required for API operations" "info"
+  log "Please enter the password for user 'cmkadmin'" "info"
+
+  read -s -p "Password: " input_password
+  echo ""
+
+  if [ -z "$input_password" ]; then
+    log "No password entered" "error"
+    return 1
+  fi
+
+  SITE_PASSWORD="$input_password"
+
+  log "Validating provided password..." "info"
+
+  local status_code=$(curl --silent --output /dev/null \
+    --write-out "%{http_code}" \
+    --header "Authorization: Basic $(echo -n "${API_USERNAME}:${SITE_PASSWORD}" | base64)" \
+    --header "Accept: application/json" \
+    "${API_BASE_URL}/${site_name}/check_mk/api/1.0/version")
+
+  if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]]; then
+    log "Password validated successfully" "success"
+    return 0
+  elif [[ "$status_code" -eq 401 ]]; then
+    log "Authentication failed: Incorrect password" "error"
+    SITE_PASSWORD=""
+    return 1
+  else
+    log "Unexpected error during authentication (status code: $status_code)" "error"
+    log "Check site status and network connectivity" "info"
+    SITE_PASSWORD=""
+    return 1
+  fi
+}
+
+get_site_password() {
+  local site_name=$1
+  local password_attempts=3
+  local attempt=1
+
+  log "Attempting to get site password for '$site_name'..." "debug"
+
+  # Try system methods first if running as root
+  if [ "$(id -u)" -eq 0 ]; then
+    if omd exists "$site_name" >/dev/null 2>&1; then
+      if [ -f "/omd/sites/$site_name/etc/htpasswd" ]; then
+        log "Attempting to extract password from htpasswd file..." "debug"
+        local extracted_pwd=$(grep "cmkadmin:" "/omd/sites/$site_name/etc/htpasswd" 2>/dev/null)
+
+        if [ -n "$extracted_pwd" ]; then
+          log "Found credentials in htpasswd file" "debug"
+          SITE_PASSWORD="*****" # Security protection
+          log "Password extraction not allowed for security reasons" "warning"
+          log "Please enter password manually" "info"
+          prompt_for_site_password "$site_name"
+          return $?
+        fi
+      fi
+    fi
+  fi
+
+  # Interactive password prompt with validation
+  while [ $attempt -le $password_attempts ]; do
+    if prompt_for_site_password "$site_name"; then
+      return 0
+    else
+      if [ $attempt -lt $password_attempts ]; then
+        log "Password validation failed, please try again (attempt $attempt/$password_attempts)" "warning"
+        attempt=$((attempt + 1))
+      else
+        log "Failed to validate password after $password_attempts attempts" "error"
+        return 1
+      fi
+    fi
+  done
+
   return 1
 }
